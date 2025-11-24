@@ -1,0 +1,87 @@
+[
+  {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "studentIdHash", "type": "bytes32" },
+      { "indexed": false, "internalType": "bytes32", "name": "dataHash", "type": "bytes32" },
+      { "indexed": true, "internalType": "address", "name": "actor", "type": "address" }
+    ],
+    "name": "RecordAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "studentIdHash", "type": "bytes32" },
+      { "indexed": false, "internalType": "bytes32", "name": "dataHash", "type": "bytes32" },
+      { "indexed": true, "internalType": "address", "name": "actor", "type": "address" }
+    ],
+    "name": "RecordUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "studentIdHash", "type": "bytes32" },
+      { "indexed": true, "internalType": "address", "name": "actor", "type": "address" }
+    ],
+    "name": "RecordDeactivated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "account", "type": "address" },
+      { "indexed": true, "internalType": "address", "name": "grantedBy", "type": "address" }
+    ],
+    "name": "TeacherGranted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "account", "type": "address" },
+      { "indexed": true, "internalType": "address", "name": "revokedBy", "type": "address" }
+    ],
+    "name": "TeacherRevoked",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "studentIdHash", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "dataHash", "type": "bytes32" }
+    ],
+    "name": "upsertRecord",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "studentIdHash", "type": "bytes32" }
+    ],
+    "name": "deactivate",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "studentIdHash", "type": "bytes32" }
+    ],
+    "name": "getRecord",
+    "outputs": [
+      { "internalType": "bytes32", "name": "dataHash", "type": "bytes32" },
+      { "internalType": "address", "name": "lastUpdatedBy", "type": "address" },
+      { "internalType": "uint64", "name": "updatedAt", "type": "uint64" },
+      { "internalType": "bool", "name": "isActive", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

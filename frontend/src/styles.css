@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+  background: linear-gradient(135deg, #f0fdfa 0%, #eef2ff 100%);
+  min-height: 100vh;
+}
+
+@layer components {
+  .input-field {
+    @apply w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 ring-brand-dark focus:outline-none focus:ring-2 focus:border-brand-dark transition disabled:bg-slate-100 disabled:text-slate-400;
+  }
+}
