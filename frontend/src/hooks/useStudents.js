@@ -8,7 +8,8 @@ export function useStudents() {
     queryFn: async () => {
       const response = await endpoints.students.list();
       return response.data.data ?? [];
-    }
+    },
+    refetchInterval: 5000
   });
 }
 
@@ -17,6 +18,8 @@ function useInvalidateStudents() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ["students"] });
     queryClient.invalidateQueries({ queryKey: ["virtual-balance"] });
+    queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["tx-history"] });
   };
 }
 

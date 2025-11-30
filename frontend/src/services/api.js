@@ -39,7 +39,8 @@ export const endpoints = {
     events: () => api.get("/blockchain/events"),
     tx: (hash) => api.get(`/blockchain/tx/${hash}`),
     history: () => api.get("/blockchain/history"),
-    balance: () => api.get("/blockchain/balance")
+    balance: () => api.get("/blockchain/balance"),
+    balanceHistory: (address) => api.get(`/blockchain/balance/history/${address}`)
   }
 };
 

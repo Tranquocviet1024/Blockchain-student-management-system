@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { body, param, validationResult } from "express-validator";
 import { requireAuth } from "../middleware/requireAuth";
 import {
@@ -14,19 +14,20 @@ import {
 } from "../services/blockchain.service";
 import { deductFee } from "../services/balance.service";
 import { ethers } from "ethers";
+import db from "../db/database";
 
 export const studentRouter = Router();
 
 studentRouter.use(requireAuth);
 
-studentRouter.get("/", (_req, res) => {
+studentRouter.get("/", (_req: Request, res: Response) => {
   res.json({ success: true, data: listStudents() });
 });
 
 studentRouter.get(
   "/:studentId",
   [param("studentId").isString().notEmpty()],
-  (req, res) => {
+  (req: Request, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
@@ -58,7 +59,7 @@ if (!FEE_RECIPIENT) {
   console.warn("FEE_TREASURY_ADDRESS is not set; student mutations will fail until configured.");
 }
 
-studentRouter.post("/", studentValidators, async (req, res) => {
+studentRouter.post("/", studentValidators, async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
@@ -78,7 +79,7 @@ studentRouter.post("/", studentValidators, async (req, res) => {
   }
 });
 
-studentRouter.put("/:studentId", studentValidators, async (req, res) => {
+studentRouter.put("/:studentId", studentValidators, async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ success: false, errors: errors.array() });
@@ -105,7 +106,7 @@ studentRouter.put("/:studentId", studentValidators, async (req, res) => {
 studentRouter.put(
   "/:studentId/deactivate",
   [param("studentId").isString().notEmpty(), body("feeTxHash").isString().notEmpty()],
-  async (req, res) => {
+  async (req: Request, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
@@ -165,8 +166,58 @@ async function verifyMutationFee(feeTxHash: string, actor: string) {
     throw new Error(`Virtual balance error: ${(balanceError as Error).message}`);
   }
 
+  // Record balance change in database
+  await recordBalanceChange(
+    actor,
+    tx.value.toString(),
+    "fee_payment",
+    feeTxHash,
+    "Trả phí mutation"
+  );
+
   return {
     feeTxHash,
     feeAmountWei: tx.value.toString()
   };
+}
+
+async function recordBalanceChange(
+  address: string,
+  changeAmount: string,
+  changeType: string,
+  transactionHash?: string,
+  description?: string
+) {
+  try {
+    const provider = getJsonRpcProvider();
+    const currentBalance = await provider.getBalance(address);
+    
+    // Get previous balance from last record
+    const lastRecord = db.prepare(`
+      SELECT balance FROM wallet_balances
+      WHERE address = ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `).get(address.toLowerCase()) as { balance: string } | undefined;
+
+    const stmt = db.prepare(`
+      INSERT INTO wallet_balances (
+        address, balance, previousBalance, changeAmount, changeType,
+        transactionHash, timestamp, description
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      address.toLowerCase(),
+      currentBalance.toString(),
+      lastRecord?.balance ?? currentBalance.toString(),
+      changeAmount,
+      changeType,
+      transactionHash ?? null,
+      new Date().toISOString(),
+      description ?? null
+    );
+  } catch (error) {
+    console.error("Failed to record balance change:", error);
+  }
 }

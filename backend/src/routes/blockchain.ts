@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getJsonRpcProvider, getReadContract } from "../services/blockchain.service";
+import db from "../db/database";
 
 export const blockchainRouter = Router();
 
@@ -51,42 +52,33 @@ function formatArgs(args: Record<string, unknown> | undefined) {
 
 blockchainRouter.get("/events", async (_req, res) => {
   try {
-    const provider = getJsonRpcProvider();
-    const latestBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(latestBlock - 5000, 0);
-    const contract = getReadContract();
-    const filters = [
-      contract.filters.RecordAdded(),
-      contract.filters.RecordUpdated(),
-      contract.filters.RecordDeactivated(),
-      contract.filters.TeacherGranted(),
-      contract.filters.TeacherRevoked()
-    ];
+    const rows = db.prepare(`
+      SELECT * FROM blockchain_events
+      ORDER BY blockNumber DESC, logIndex DESC
+      LIMIT 100
+    `).all() as any[];
 
-    const eventChunks = await Promise.all(
-      filters.map(async (filter) => {
-        const logs = await contract.queryFilter(filter, fromBlock);
-        return logs.map((evt) => ({
-          event: evt.eventName,
-          args: formatArgs(evt.args as Record<string, unknown> | undefined),
-          blockNumber: evt.blockNumber,
-          transactionHash: evt.transactionHash,
-          logIndex: evt.logIndex ?? 0
-        }));
-      })
-    );
+    console.log(`/events endpoint: Found ${rows.length} events in database`);
 
-    const flattened = eventChunks
-      .flat()
-      .sort((a, b) => {
-        if (a.blockNumber === b.blockNumber) {
-          return (b.logIndex ?? 0) - (a.logIndex ?? 0);
-        }
-        return (b.blockNumber ?? 0) - (a.blockNumber ?? 0);
-      })
-      .slice(0, 100);
+    const events = rows.map((row) => {
+      const args: Record<string, unknown> = {};
+      if (row.studentIdHash) args.studentIdHash = row.studentIdHash;
+      if (row.dataHash) args.dataHash = row.dataHash;
+      if (row.actor) args.actor = row.actor;
+      if (row.account) args.account = row.account;
+      if (row.grantedBy) args.grantedBy = row.grantedBy;
+      if (row.revokedBy) args.revokedBy = row.revokedBy;
 
-    res.json({ success: true, data: flattened });
+      return {
+        event: row.eventName,
+        args,
+        blockNumber: row.blockNumber,
+        transactionHash: row.transactionHash,
+        logIndex: row.logIndex
+      };
+    });
+
+    res.json({ success: true, data: events });
   } catch (error) {
     res.status(500).json({ success: false, message: (error as Error).message });
   }
@@ -94,71 +86,55 @@ blockchainRouter.get("/events", async (_req, res) => {
 
 blockchainRouter.get("/history", async (_req, res) => {
   try {
+    const rows = db.prepare(`
+      SELECT * FROM blockchain_events
+      ORDER BY blockNumber DESC, logIndex DESC
+      LIMIT 25
+    `).all() as any[];
+
     const provider = getJsonRpcProvider();
-    const latestBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(latestBlock - 5000, 0);
-    const contract = getReadContract();
-    const filters = [
-      contract.filters.RecordAdded(),
-      contract.filters.RecordUpdated(),
-      contract.filters.RecordDeactivated(),
-      contract.filters.TeacherGranted(),
-      contract.filters.TeacherRevoked()
-    ];
-
-    const eventChunks = await Promise.all(
-      filters.map(async (filter) => {
-        const logs = await contract.queryFilter(filter, fromBlock);
-        return logs.map((evt) => ({
-          event: evt.eventName,
-          args: formatArgs(evt.args as Record<string, unknown> | undefined),
-          blockNumber: evt.blockNumber,
-          transactionHash: evt.transactionHash,
-          logIndex: evt.logIndex ?? 0
-        }));
-      })
-    );
-
-    const recent = eventChunks
-      .flat()
-      .sort((a, b) => {
-        if (a.blockNumber === b.blockNumber) {
-          return (b.logIndex ?? 0) - (a.logIndex ?? 0);
-        }
-        return (b.blockNumber ?? 0) - (a.blockNumber ?? 0);
-      })
-      .slice(0, 25);
-
-    const uniqueBlocks = Array.from(new Set(recent.map((item) => item.blockNumber).filter(Boolean)));
-    const blockMap = new Map<number, number>();
-    await Promise.all(
-      uniqueBlocks.map(async (blockNumber) => {
-        if (typeof blockNumber !== "number") return;
-        const block = await provider.getBlock(blockNumber);
-        if (block) {
-          blockMap.set(blockNumber, block.timestamp);
-        }
-      })
-    );
 
     const history = await Promise.all(
-      recent.map(async (entry) => {
-        const [tx, receipt] = await Promise.all([
-          provider.getTransaction(entry.transactionHash),
-          provider.getTransactionReceipt(entry.transactionHash)
-        ]);
-        const timestamp = entry.blockNumber ? blockMap.get(entry.blockNumber) : undefined;
-        return {
-          hash: entry.transactionHash,
-          event: entry.event,
-          args: entry.args,
-          blockNumber: entry.blockNumber,
-          timestamp: timestamp ? new Date(timestamp * 1000).toISOString() : null,
-          from: tx?.from ?? null,
-          to: tx?.to ?? null,
-          status: receipt?.status === 1 ? "success" : receipt ? "failed" : "pending",
-          gasUsed: receipt?.gasUsed?.toString() ?? null
-        };
+      rows.map(async (row) => {
+        const args: Record<string, unknown> = {};
+        if (row.studentIdHash) args.studentIdHash = row.studentIdHash;
+        if (row.dataHash) args.dataHash = row.dataHash;
+        if (row.actor) args.actor = row.actor;
+        if (row.account) args.account = row.account;
+        if (row.grantedBy) args.grantedBy = row.grantedBy;
+        if (row.revokedBy) args.revokedBy = row.revokedBy;
+
+        try {
+          const [tx, receipt] = await Promise.all([
+            provider.getTransaction(row.transactionHash),
+            provider.getTransactionReceipt(row.transactionHash)
+          ]);
+
+          return {
+            hash: row.transactionHash,
+            event: row.eventName,
+            args,
+            blockNumber: row.blockNumber,
+            timestamp: row.timestamp,
+            from: tx?.from ?? null,
+            to: tx?.to ?? null,
+            status: receipt?.status === 1 ? "success" : receipt ? "failed" : "pending",
+            gasUsed: receipt?.gasUsed?.toString() ?? null
+          };
+        } catch {
+          // If transaction not found on chain (node restarted), use stored data
+          return {
+            hash: row.transactionHash,
+            event: row.eventName,
+            args,
+            blockNumber: row.blockNumber,
+            timestamp: row.timestamp,
+            from: null,
+            to: null,
+            status: "success",
+            gasUsed: null
+          };
+        }
       })
     );
 
@@ -173,6 +149,33 @@ blockchainRouter.get("/balance", async (_req, res) => {
     const { getBalanceInfo } = await import("../services/balance.service");
     const balanceInfo = getBalanceInfo();
     res.json({ success: true, data: balanceInfo });
+  } catch (error) {
+    res.status(500).json({ success: false, message: (error as Error).message });
+  }
+});
+
+blockchainRouter.get("/balance/history/:address", async (req, res) => {
+  try {
+    const address = req.params.address.toLowerCase();
+    const rows = db.prepare(`
+      SELECT * FROM wallet_balances
+      WHERE address = ?
+      ORDER BY timestamp DESC
+      LIMIT 50
+    `).all(address) as any[];
+
+    const history = rows.map((row) => ({
+      id: row.id,
+      balance: row.balance,
+      previousBalance: row.previousBalance,
+      changeAmount: row.changeAmount,
+      changeType: row.changeType,
+      transactionHash: row.transactionHash,
+      timestamp: row.timestamp,
+      description: row.description
+    }));
+
+    res.json({ success: true, data: history });
   } catch (error) {
     res.status(500).json({ success: false, message: (error as Error).message });
   }

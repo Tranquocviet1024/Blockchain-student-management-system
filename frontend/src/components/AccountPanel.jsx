@@ -3,6 +3,8 @@ import { useAuth } from "../context/AuthContext";
 import { connectWallet } from "../services/wallet";
 import { useWalletDetails } from "../hooks/useWalletDetails";
 import { useBalance } from "../hooks/useBalance";
+import { useQuery } from "@tanstack/react-query";
+import { endpoints } from "../services/api";
 
 export function AccountPanel() {
   const { address, login } = useAuth();
@@ -10,7 +12,19 @@ export function AccountPanel() {
   const { data: virtualBalanceData, isLoading: isVirtualBalanceLoading } = useBalance();
   const [status, setStatus] = useState(null);
   const [switching, setSwitching] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const mutationFeeEth = import.meta.env.VITE_MUTATION_FEE_ETH || "0.01";
+
+  const { data: balanceHistory = [] } = useQuery({
+    queryKey: ["balance-history", address],
+    queryFn: async () => {
+      if (!address) return [];
+      const response = await endpoints.blockchain.balanceHistory(address);
+      return response.data.data ?? [];
+    },
+    enabled: Boolean(address && showHistory),
+    refetchInterval: 15000
+  });
 
   const handleCopy = async () => {
     if (!address || !navigator?.clipboard) return;
@@ -93,12 +107,73 @@ export function AccountPanel() {
         >
           {switching ? "Đang đổi ví..." : "Chuyển ví"}
         </button>
+        <button
+          type="button"
+          onClick={() => setShowHistory(!showHistory)}
+          disabled={!address}
+          className="px-5 py-3 rounded-full border border-slate-200 text-sm font-semibold text-slate-600 hover:border-brand-dark/40 hover:text-brand-dark disabled:opacity-50"
+        >
+          {showHistory ? "Ẩn lịch sử số dư" : "Xem lịch sử số dư"}
+        </button>
       </div>
 
       <p className="text-xs text-slate-500">
         Phí vận hành hiện tại: <span className="font-semibold text-slate-900">{mutationFeeEth} ETH</span> mỗi lần thêm/cập nhật/vô hiệu.
         {" "}Số dư ảo sẽ tự động giảm sau mỗi giao dịch. Số dư ví MetaMask được dùng để trả phí gas thực tế.
       </p>
+
+      {showHistory && balanceHistory.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white/50 p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Lịch sử thay đổi số dư</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600">Thời gian</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600">Số dư trước</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600">Thay đổi</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-slate-600">Số dư sau</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600">Loại</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600">TX Hash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balanceHistory.map((record, idx) => (
+                  <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-2 px-3 text-slate-700">
+                      {new Date(record.timestamp).toLocaleString("vi-VN")}
+                    </td>
+                    <td className="py-2 px-3 text-right text-slate-700">
+                      {parseFloat(record.previousBalance).toFixed(4)} ETH
+                    </td>
+                    <td className={`py-2 px-3 text-right font-semibold ${parseFloat(record.changeAmount) < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                      {parseFloat(record.changeAmount) > 0 ? '+' : ''}{parseFloat(record.changeAmount).toFixed(4)} ETH
+                    </td>
+                    <td className="py-2 px-3 text-right text-slate-900 font-semibold">
+                      {parseFloat(record.balance).toFixed(4)} ETH
+                    </td>
+                    <td className="py-2 px-3 text-slate-600">
+                      {record.changeType === 'fee_payment' ? 'Phí giao dịch' : record.changeType}
+                    </td>
+                    <td className="py-2 px-3 text-slate-500 font-mono text-xs">
+                      {record.transactionHash ? truncateAddress(record.transactionHash) : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {balanceHistory[0]?.description && (
+            <p className="text-xs text-slate-500 italic">{balanceHistory[0].description}</p>
+          )}
+        </div>
+      )}
+
+      {showHistory && balanceHistory.length === 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white/50 p-4">
+          <p className="text-sm text-slate-500 text-center">Chưa có lịch sử thay đổi số dư</p>
+        </div>
+      )}
 
       {(status || error) && (
         <p className={`text-xs ${error ? "text-rose-500" : "text-slate-500"}`}>
